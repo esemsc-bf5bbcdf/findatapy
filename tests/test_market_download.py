@@ -67,7 +67,30 @@ def test_free_fx_tick_download():
 
     assert df is not None
 
+class TestAlphaVantage:
 
+    def setup(self):
+        pass
+
+    def test_free_fx_tick_download(self):
+        market_request = MarketDataRequest(start_date="05 Dec 2016", 
+                                   finish_date="07 Dec 2016",
+                                   fields=["bid"], vendor_fields=["bid"],
+                                   freq="tick", data_source="dukascopy",
+                                   tickers=["EURUSD"], 
+                                   vendor_tickers=["EURUSD"])
+        df = pd.DataFrame() #this will then be ur data fill
+        assert isinstance(df, pd.DataFrame)
+
+    def test_start_date_post_start_date(self):
+        """Assuming we want to only return the data within our start and finish dates; ill check our returned data matches this"""
+        pass
+
+    def test_finish_date_pre_finish_date(self):
+        """Assuming we want to only return the data within our start and finish dates; ill check our returned data matches this"""
+        pass
+
+    
 if __name__ == "__main__":
     pytest.main()
 

@@ -70,3 +70,5 @@ target/
 
 # Output Files
 
+#Enviroments
+venv/
