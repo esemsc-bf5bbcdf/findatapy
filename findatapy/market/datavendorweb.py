@@ -3103,26 +3103,6 @@ class DataVendorFXCMPY(DataVendor):
         return data_frame
 
 
-class DataVendorFMP(DataVendor):
-    """Reads in data from FMP into findatapy library
-
-    """
-    API_KEY="2NX5IA2Xwruol77lVVt9DDAUnOhwzZRJ"
-    url = ("https://financialmodelingprep.com/api/v3/search?query=AA&apikey"+API_KEY)
-
-    def __init__(self):
-        super(DataVendorFMP, self).__init__()
-
-    def get_jsonparsed_data(url):
-        response = urlopen(url, cafile=certifi.where())
-        data = response.read().decode("utf-8")
-        return json.loads(data)
-    
-
-# try:
-#     import 
-# except:
-#     pass
 from dotenv import load_dotenv
 
 load_dotenv()
