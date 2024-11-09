@@ -243,6 +243,9 @@ class DataConstants(object):
     #######  Alpha Vantage settings
     alpha_vantage_api_key = key_store("AlphaVantage")
 
+    #######  Alpha Vantage settings
+    polygon_api_key = key_store("polygon")
+
     #######  FXCM API (contact FXCM to get this)
     fxcm_api_key = "x"
 

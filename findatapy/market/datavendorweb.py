@@ -3103,26 +3103,23 @@ class DataVendorFXCMPY(DataVendor):
         return data_frame
 
 
-from dotenv import load_dotenv
-
-load_dotenv()
-class DataVendorAlphaVantage(DataVendor):
-    """Reads in data from AlphaVantage into findatapy library"""
+class DataVendorPolygon(DataVendor):
+    """Reads in data from Polygon.io into findatapy library"""
     
     def __init__(self):
-        super(DataVendorAlphaVantage, self).__init__()
-        self.base_url = "https://www.alphavantage.co/query"
-        self.api_key = os.getenv('ALPHAVANTAGE_API_KEY')
-        if not self.api_key:
-            raise ValueError("ALPHAVANTAGE_API_KEY not found in environment variables")
-    
+        super(DataVendorPolygon, self).__init__()
+        self.base_url = "https://api.polygon.io/v2"
+        # Get API key from keyring
+        # self.api_key = md_request.alpha_vantage_api_key
+        # if not self.api_key:
+        #     raise ValueError("Polygon API key not found in keyring. Please run setup script first.")
         
     def load_ticker(self, md_request):
         logger = LoggerManager().getLogger(__name__)
         
         md_request_vendor = self.construct_vendor_md_request(md_request)
         
-        logger.info("Request AlphaVantage data")
+        logger.info("Request Polygon.io data")
         
         data_frame = self.download_daily(md_request_vendor)
         
@@ -3131,13 +3128,15 @@ class DataVendorAlphaVantage(DataVendor):
             
         # Convert from vendor to findatapy tickers/fields
         if data_frame is not None:
-            # Map AlphaVantage fields to standard names
+            # Map Polygon fields to standard names
             field_mapping = {
-                '1. open': 'open',
-                '2. high': 'high',
-                '3. low': 'low',
-                '4. close': 'close',
-                '5. volume': 'volume'
+                'o': 'open',
+                'h': 'high',
+                'l': 'low',
+                'c': 'close',
+                'v': 'volume',
+                'vw': 'vwap',
+                'n': 'transactions'
             }
             
             # Rename columns using our mapping
@@ -3150,7 +3149,7 @@ class DataVendorAlphaVantage(DataVendor):
             data_frame.columns = ticker_combined
             data_frame.index.name = 'Date'
             
-        logger.info(f"Completed request from AlphaVantage for {ticker_combined}")
+        logger.info(f"Completed request from Polygon for {ticker_combined}")
         
         return data_frame
     
@@ -3162,44 +3161,54 @@ class DataVendorAlphaVantage(DataVendor):
         
         while trials < 5:
             try:
+                # Polygon requires dates in YYYY-MM-DD format
+                start_date = md_request.start_date.strftime('%Y-%m-%d') if md_request.start_date else None
+                end_date = md_request.finish_date.strftime('%Y-%m-%d') if md_request.finish_date else None
+                
+                # If no end date specified, use today
+                if not end_date:
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                
+                # If no start date specified, use 2 years of data
+                if not start_date:
+                    start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+                
+                # Construct API endpoint for aggregates (daily bars)
+                endpoint = f"{self.base_url}/aggs/ticker/{md_request.tickers[0]}/range/1/day/{start_date}/{end_date}"
+                
                 params = {
-                    'function': 'TIME_SERIES_DAILY',
-                    'symbol': md_request.tickers[0],  # Assuming single ticker
-                    'outputsize': 'full' if md_request.start_date else 'compact',
-                    'datatype': 'json',
-                    'apikey': self.api_key
+                    'adjusted': 'true',  # Get adjusted values
+                    'sort': 'asc',       # Sort by date ascending
+                    'limit': 50000,      # Maximum results
+                    'apiKey': self.api_key
                 }
                 
-                response = requests.get(self.base_url, params=params)
-                response.raise_for_status()  # Raise exception for bad status codes
+                response = requests.get(endpoint, params=params)
+                response.raise_for_status()
                 
                 data = response.json()
                 
-                if 'Time Series (Daily)' not in data:
+                if 'results' not in data or not data['results']:
                     logger.error(f"No data returned for {md_request.tickers[0]}")
                     return None
-                    
+                
                 # Convert to DataFrame
-                data_frame = pd.DataFrame.from_dict(
-                    data['Time Series (Daily)'],
-                    orient='index'
-                )
+                data_frame = pd.DataFrame(data['results'])
                 
-                # Convert index to datetime
-                data_frame.index = pd.to_datetime(data_frame.index)
+                # Convert timestamp to datetime index
+                data_frame['t'] = pd.to_datetime(data_frame['t'], unit='ms')
+                data_frame.set_index('t', inplace=True)
                 
-                # Filter by date range if provided
-                if md_request.start_date:
-                    data_frame = data_frame[data_frame.index >= md_request.start_date]
-                if md_request.finish_date:
-                    data_frame = data_frame[data_frame.index <= md_request.finish_date]
+                # Handle any after-hours or pre-market adjustments if needed
+                data_frame = data_frame.resample('D').last()  # Ensure daily frequency
+                data_frame = data_frame.dropna()  # Remove any NaN rows
                 
                 break
                 
             except requests.exceptions.RequestException as e:
                 trials += 1
                 logger.info(
-                    f"Attempting... {trials} request to download from AlphaVantage due to "
+                    f"Attempting... {trials} request to download from Polygon due to "
                     f"following error: {str(e)}"
                 )
             
@@ -3210,6 +3219,61 @@ class DataVendorAlphaVantage(DataVendor):
                 )
         
         if trials == 5:
-            logger.error("Couldn't download from AlphaVantage after several attempts!")
+            logger.error("Couldn't download from Polygon after several attempts!")
             
         return data_frame
+    
+    def get_intraday_data(self, md_request, interval='minute'):
+        """
+        Additional method to get intraday data from Polygon
+        interval options: 'minute', 'hour'
+        """
+        logger = LoggerManager().getLogger(__name__)
+        
+        try:
+            # Convert interval to minutes for API
+            interval_mapping = {
+                'minute': 1,
+                'hour': 60
+            }
+            minutes = interval_mapping.get(interval, 1)
+            
+            endpoint = f"{self.base_url}/aggs/ticker/{md_request.tickers[0]}/range/{minutes}/minute/{md_request.start_date.strftime('%Y-%m-%d')}/{md_request.finish_date.strftime('%Y-%m-%d')}"
+            
+            params = {
+                'adjusted': 'true',
+                'sort': 'asc',
+                'limit': 50000,
+                'apiKey': self.api_key
+            }
+            
+            response = requests.get(endpoint, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if 'results' not in data or not data['results']:
+                return None
+                
+            data_frame = pd.DataFrame(data['results'])
+            data_frame['t'] = pd.to_datetime(data_frame['t'], unit='ms')
+            data_frame.set_index('t', inplace=True)
+            
+            # Apply the same field mapping as daily data
+            field_mapping = {
+                'o': 'open',
+                'h': 'high',
+                'l': 'low',
+                'c': 'close',
+                'v': 'volume',
+                'vw': 'vwap',
+                'n': 'transactions'
+            }
+            
+            data_frame.rename(columns=field_mapping, inplace=True)
+            
+            return data_frame
+            
+        except Exception as e:
+            logger.error(f"Error fetching intraday data: {str(e)}")
+            return None

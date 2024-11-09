@@ -11,7 +11,7 @@ import keyring
 
 service_names = ['Quandl', 'AlphaVantage', 'Twitter App Key',
                  'Twitter App Secret', 'Twitter OAUTH token',
-                 'Twitter OAUTH token Secret', 'FRED']
+                 'Twitter OAUTH token Secret', 'FRED', 'polygon']
 
 for s in service_names:
     key = input("Please enter the %s API key: " % s)
