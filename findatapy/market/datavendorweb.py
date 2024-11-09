@@ -3108,7 +3108,7 @@ class DataVendorPolygon(DataVendor):
     
     def __init__(self):
         super(DataVendorPolygon, self).__init__()
-        self.base_url = "https://api.polygon.io/v2"
+        self.base_url = "https://api.polygon.io/"
         # Get API key from keyring
         # self.api_key = md_request.alpha_vantage_api_key
         # if not self.api_key:
